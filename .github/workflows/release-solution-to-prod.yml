@@ -1,0 +1,92 @@
+name: release-solution-to-prod
+# prepare for releasing to prod:
+#   convert solution to managed (using a build PowerPlatform environment for the conversion)
+#   upload the solution to the GitHub artifacts and deploy to the PROD environment
+
+on:
+  #workflow_dispatch:
+  
+  pull_request:
+    types:
+      - closed
+  #release:
+    #types: [created]
+
+permissions:
+  contents: write
+
+jobs:
+  convert-to-managed:
+    runs-on: windows-latest
+    environment: Prod
+
+    steps:
+    - uses: actions/checkout@v4.1.1
+      with:
+        lfs: true
+    - name: Install Power Platform actions
+      uses: microsoft/powerplatform-actions/actions-install@v1.2.0
+
+    - name: Pack solution
+      uses: microsoft/powerplatform-actions/pack-solution@v1.2.0
+      with:
+        solution-folder: solutions/ALMDemo
+        solution-file: out/solutions/ALMDemo.zip
+        solution-type: Both
+
+    - name: Upload the ready to ship solution to GH artifact store
+      uses: actions/upload-artifact@v2
+      with:
+        name: managedSolutions
+        path: out/solutions
+    
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.run_id }}.${{ github.run_number }}.${{ github.run_attempt }}
+        release_name: Release ${{ github.run_id }}.${{ github.run_number }}.${{ github.run_attempt }}
+        draft: false
+        prerelease: false
+    
+    - name: Upload assets to release
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: out/solutions/ALMDemo.zip
+        asset_name: ALMDemo.zip
+        asset_content_type: application/zip
+
+
+
+  release-to-staging:
+    needs: [convert-to-managed]
+    runs-on: windows-latest
+    environment: Prod
+        
+    steps:
+    - uses: actions/checkout@v2
+      with:
+        lfs: true
+        
+    - name: Fetch the ready to ship solution from GH artifact store
+      uses: actions/download-artifact@v2
+      with:
+        name: managedSolutions
+        path: out/release/
+        
+    - name: Import solution to prod env  i.e. jessica
+      uses: microsoft/powerplatform-actions/import-solution@v0
+      with:
+        environment-url: ${{ secrets.URL }}
+        app-id: ${{ secrets.CLIENTID }}
+        client-secret: ${{ secrets.SECRET }}
+        tenant-id: ${{ secrets.TENANTID }}
+        solution-file: out/release/ALMDemo_managed.zip
+        force-overwrite: true
+        publish-changes: true        
+
