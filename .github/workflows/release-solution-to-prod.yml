@@ -88,5 +88,5 @@ jobs:
         tenant-id: ${{ secrets.TENANTID }}
         solution-file: out/release/ALMDemo_managed.zip
         force-overwrite: true
-        publish-changes: true        
+        #publish-changes: true        
 
